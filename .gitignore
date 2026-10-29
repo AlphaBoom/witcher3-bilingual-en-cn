@@ -19,3 +19,4 @@ report.json
 *.log
 *.zip
 .env*
+game-dir.txt
