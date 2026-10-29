@@ -42,6 +42,9 @@ def main():
         if report:
             if current == report['output_sha256']:
                 state = 'installed' if version == report['game_version'] else 'game-updated'
+                script = root / report['script_mod']['relative_path']
+                if state == 'installed' and (not script.is_file() or sha(script) != report['script_mod']['sha256']):
+                    state = 'script-missing-or-changed'
             elif current == report['source_sha256']['cn']:
                 state = 'original-text'
             else:

@@ -45,8 +45,9 @@ def validate(folder):
             assert not INDEXED.search(rendered) and not TOKEN.search(rendered)
             assert all(rendered.count(nbsp + value) == 2 for values in args.values() for value in values)
     assert dynamic == report['dynamic_bilingual_entries']
-    script = (folder / report['script_mod']['prepared_file']).read_text('utf-8')
-    assert hashlib.sha256(script.encode('utf-8')).hexdigest() == report['script_mod']['sha256']
+    script_bytes = (folder / report['script_mod']['prepared_file']).read_bytes()
+    assert hashlib.sha256(script_bytes).hexdigest() == report['script_mod']['sha256']
+    script = script_bytes.decode('utf-8')
     wrappers = re.findall(r'@wrapMethod(?:\((\w+)\))?\s+function\s+(\w+)\s*\(([^)]*)\)\s*(?::\s*(\w+))?\s*\{', script)
     assert len(wrappers) == len(re.findall(r'@wrapMethod\b', script)) == 3
     sources = {'': folder.parent / 'content/content0/scripts/game/localizedContent.ws',
