@@ -1,5 +1,20 @@
 param([string]$SettingsPath = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'The Witcher 3\dx12user.settings'))
 $ErrorActionPreference = 'Stop'
+
+# Use .NET directly: child Windows PowerShell may not expose Get-FileHash.
+function Get-BilingualFileHash {
+    param([string]$LiteralPath, [string]$Algorithm = 'SHA256')
+    if ($Algorithm -ne 'SHA256') { throw 'Only SHA256 is supported.' }
+    $stream = [System.IO.File]::OpenRead($LiteralPath)
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        [PSCustomObject]@{ Hash = ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-', '') }
+    } finally {
+        $hasher.Dispose()
+        $stream.Dispose()
+    }
+}
+
 $taskDirectory = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $gameDirectory = [System.IO.Path]::GetFullPath((Split-Path -Parent $taskDirectory))
 if (-not (Test-Path -LiteralPath (Join-Path $gameDirectory 'bin\x64_dx12\witcher3.exe'))) { throw 'Expected game executable missing.' }
@@ -16,18 +31,18 @@ $currentVersion = (Get-Item -LiteralPath (Join-Path $gameDirectory 'bin\x64_dx12
 if ($currentVersion -ne $reportData.game_version) { throw 'Game updated after preparation. Regenerate from current game files.' }
 $settingsPath = [System.IO.Path]::GetFullPath($SettingsPath)
 $settingsBackup = Join-Path $backupDirectory 'dx12user.settings'
-if ((Get-FileHash -LiteralPath $backupTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.source_sha256.cn) { throw 'Backup checksum differs.' }
-$currentTargetHash = (Get-FileHash -LiteralPath $originalTarget -Algorithm SHA256).Hash.ToLowerInvariant()
+if ((Get-BilingualFileHash -LiteralPath $backupTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.source_sha256.cn) { throw 'Backup checksum differs.' }
+$currentTargetHash = (Get-BilingualFileHash -LiteralPath $originalTarget -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($currentTargetHash -notin @($reportData.source_sha256.cn, $reportData.previous_output_sha256, $reportData.output_sha256)) { throw 'Original file changed since preparation.' }
-if ((Get-FileHash -LiteralPath $preparedTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.output_sha256) { throw 'Prepared checksum differs.' }
+if ((Get-BilingualFileHash -LiteralPath $preparedTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.output_sha256) { throw 'Prepared checksum differs.' }
 $scriptTarget = Join-Path $gameDirectory 'mods\modBilingualEnCnPlaceholders\content\scripts\local\bilingual_placeholders.ws'
 $preparedScript = Join-Path $taskDirectory 'prepared\bilingual_placeholders.ws'
-if ((Get-FileHash -LiteralPath $preparedScript -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.script_mod.sha256) { throw 'Prepared script checksum differs.' }
+if ((Get-BilingualFileHash -LiteralPath $preparedScript -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.script_mod.sha256) { throw 'Prepared script checksum differs.' }
 $scriptExisted = Test-Path -LiteralPath $scriptTarget
 if ($scriptExisted) {
     $installedPath = Join-Path $taskDirectory 'installed.json'
     $oldInstalled = [System.IO.File]::ReadAllText($installedPath) | ConvertFrom-Json
-    $currentScriptHash = (Get-FileHash -LiteralPath $scriptTarget -Algorithm SHA256).Hash.ToLowerInvariant()
+    $currentScriptHash = (Get-BilingualFileHash -LiteralPath $scriptTarget -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($currentScriptHash -notin @($oldInstalled.script_sha256, $reportData.script_mod.sha256)) { throw 'Existing placeholder mod was changed by another edit.' }
 }
 $settingsBefore = [System.IO.File]::ReadAllText($settingsPath)
@@ -57,9 +72,9 @@ try {
     New-Item -ItemType Directory -Path (Split-Path -Parent $scriptTarget) -Force | Out-Null
     $scriptWasWritten = $true
     Copy-Item -LiteralPath $preparedScript -Destination $scriptTarget
-    if ((Get-FileHash -LiteralPath $scriptTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.script_mod.sha256) { throw 'Installed script checksum differs.' }
+    if ((Get-BilingualFileHash -LiteralPath $scriptTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.script_mod.sha256) { throw 'Installed script checksum differs.' }
     Copy-Item -LiteralPath $preparedTarget -Destination $originalTarget
-    if ((Get-FileHash -LiteralPath $originalTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.output_sha256) { throw 'Installed checksum differs.' }
+    if ((Get-BilingualFileHash -LiteralPath $originalTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $reportData.output_sha256) { throw 'Installed checksum differs.' }
     if ($settingsAfter -ne $settingsBefore) {
         $settingsWasWritten = $true
         [System.IO.File]::WriteAllText($settingsPath, $settingsAfter, (New-Object System.Text.UTF8Encoding($false)))
@@ -81,7 +96,7 @@ try {
     $installedData | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskDirectory 'installed.json') -Encoding UTF8
     Write-Output 'Installed and checksum-verified. English first, Simplified Chinese secondary. Voice remains English.'
 } catch {
-    if ((Get-FileHash -LiteralPath $originalTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $currentTargetHash) {
+    if ((Get-BilingualFileHash -LiteralPath $originalTarget -Algorithm SHA256).Hash.ToLowerInvariant() -ne $currentTargetHash) {
         Copy-Item -LiteralPath $rollbackTarget -Destination $originalTarget
     }
     if ($scriptWasWritten) {
